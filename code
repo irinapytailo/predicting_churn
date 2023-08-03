@@ -1,0 +1,337 @@
+#The project is based off the dataset with customer data.
+
+#Importing the libraries
+
+import pandas as pd
+import numpy as np
+from matplotlib import pyplot as plt
+import seaborn
+
+#loading the dataset
+
+data = pd.read_csv('../input/advanced-dls-spring-2021/train.csv', sep = ',')
+
+#watching random lines in the data
+
+data.iloc[[6, 148, 324, 900, 1233, 3000, 4680, 5001], ]
+
+#watching the data shape
+
+data.shape
+
+#creating a list of numeric and categorical features
+
+num_cols = [
+    'ClientPeriod',
+    'MonthlySpending',
+    'TotalSpent'
+]
+
+
+cat_cols = [
+    'Sex',
+    'IsSeniorCitizen',
+    'HasPartner',
+    'HasChild',
+    'HasPhoneService',
+    'HasMultiplePhoneNumbers',
+    'HasInternetService',
+    'HasOnlineSecurityService',
+    'HasOnlineBackup',
+    'HasDeviceProtection',
+    'HasTechSupportAccess',
+    'HasOnlineTV',
+    'HasMovieSubscription',
+    'HasContractPhone',
+    'IsBillingPaperless',
+    'PaymentMethod'
+]
+
+feature_cols = num_cols + cat_cols
+target_col = 'Churn'
+
+#checking data types
+
+data.dtypes
+
+#fixing data types
+
+data['TotalSpent'] = pd.to_numeric(data['TotalSpent'], errors = 'coerce')
+
+#checking NAs
+
+data.isna().sum()
+
+
+#filling NAs with zeros
+
+data['TotalSpent'] = data['TotalSpent'].fillna(0)
+data.isna().sum()
+
+#checking values of categorical features
+
+numeric_data = data[num_cols]
+cat_data = data[cat_cols]
+for i in cat_cols:
+  print(i, data[i].unique())
+
+#DATA ANALYSIS
+
+
+#building histograms for numeric features
+
+data.hist(column = num_cols, figsize = (10, 14))
+None
+
+
+#building value counts for categorical features
+
+for i in cat_cols:
+  print(data[i].value_counts())
+
+
+f = plt.figure(figsize = (30, 20))
+
+i = 1
+for col in cat_cols:
+    plt.subplot(4, 4, i)
+    plt.bar(data[col].unique(), data[col].value_counts())
+    plt.title(col)
+    i += 1
+
+
+#checking how the target variable is distributed over its labels
+
+plt.bar(['No', "Yes"], data['Churn'].value_counts(), color = 'c')
+plt.title("Churn")
+data['Churn'].value_counts() / len(data)
+
+#checking if there's a correlation between numeric features
+
+numeric_data.corr().style.background_gradient(cmap='coolwarm').set_precision(2)
+
+
+for i in range(0, len(data)):
+  data.iloc[i, 4] = 'Yes' if data.iloc[i, 4] == 1 else 'No'
+
+cat_data = data[cat_cols]
+
+#coding categorical variables
+
+dummy_features = pd.get_dummies(cat_data)
+dummy_features.head()
+
+#checking for correlations
+
+pd.concat([data[num_cols], dummy_features, data['Churn']], axis=1).corr().style.background_gradient(cmap='coolwarm').set_precision(2)
+
+#there seems to be a correlation between TotalSpend and ClientPeriod, which is logical. Though ClientPeriod*MonthlySpend != TotalSpend. 
+
+y1 = data['MonthlySpending'] * data['ClientPeriod'] #predicted
+y2 = data['TotalSpent'] #real
+d = y2 - y1
+#покажем на графике разницу между предсказанными и реальными значениями
+plt.plot(abs(d))
+
+
+#adding a new column for clients whose TotalSpend is higher than predicted
+
+newcol = pd.Series(data['TotalSpent'] - data['ClientPeriod'] * data['MonthlySpending'])
+data['Difference'] = newcol
+
+#checking if Difference column is a good choice
+
+seaborn.pairplot(pd.concat([data['Difference'], data['Churn']], axis = 1), 'Churn')
+data = data.drop(['Difference'], axis = 1)
+
+#checking how well each numeric variable explains Churn
+
+seaborn.pairplot(pd.concat([numeric_data, data['Churn']], axis = 1), 'Churn')
+
+#checking how well each categorical variable explains churn
+
+fig = plt.figure(figsize = (20, 20))
+i = 1
+for col in cat_cols:
+    plt.subplot(4, 4, i)
+    seaborn.countplot(x = col, data = data,  hue = 'Churn')
+    plt.title(col)
+    i += 1
+
+#PREDICTING CHURN
+
+HasNoTechSupportAccess = pd.Series(dummy_features['HasTechSupportAccess_No'])   
+HasNoMovieSubscription = pd.Series(dummy_features['HasMovieSubscription_No'])   
+PaymentMethodElCheck = pd.Series(dummy_features['PaymentMethod_Electronic check'])  
+
+for i in range(0, len(data)):
+  HasNoTechSupportAccess[i] = 'Yes' if HasNoTechSupportAccess[i] == 1 else 'No'
+  HasNoMovieSubscription[i] = 'Yes' if HasNoMovieSubscription[i] == 1 else 'No'
+  PaymentMethodElCheck[i] = 'Yes' if PaymentMethodElCheck[i] == 1 else 'No'
+
+cat_cols_mod = ['IsSeniorCitizen', 'HasPartner', 'HasChild', 'HasInternetService', 'HasOnlineSecurityService', 'HasOnlineBackup', 
+                'HasDeviceProtection', 'HasContractPhone', 'IsBillingPaperless']
+
+num_cols_mod = ['ClientPeriod', 'MonthlySpending']
+
+cat_data_mod = data[cat_cols_mod]
+
+num_data_mod = data[num_cols_mod]
+
+mod = data
+mod['HasNoTechSupportAccess'] = HasNoTechSupportAccess
+mod['HasNoMovieSubscription'] = HasNoMovieSubscription
+mod['PaymentMethodElCheck'] = PaymentMethodElCheck
+
+cat_data_mod = mod[['IsSeniorCitizen', 'HasPartner', 'HasChild', 'HasInternetService', 'HasOnlineSecurityService', 'HasOnlineBackup', 
+                'HasDeviceProtection', 'HasContractPhone', 'IsBillingPaperless', 'HasNoTechSupportAccess', 'HasNoMovieSubscription', 'PaymentMethodElCheck']]
+
+#one-hot encoding
+
+dummy_features_mod = pd.get_dummies(cat_data_mod)
+
+dummy_features_mod = dummy_features_mod.drop(labels = ['HasOnlineSecurityService_No internet service', 'HasOnlineBackup_No internet service', 
+                                                      'HasDeviceProtection_No internet service'], axis = 1)
+
+
+mod_full = pd.concat([num_data_mod, dummy_features_mod, data['Churn']], axis = 1)
+
+data.query("TotalSpent == 0")
+
+#lines with erraneous data
+indices = [1048, 1707, 2543, 3078, 3697, 4002, 4326, 4551, 4598]
+
+from sklearn.linear_model import LogisticRegression, LogisticRegressionCV
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.preprocessing import StandardScaler, RobustScaler, LabelEncoder, OneHotEncoder
+from sklearn.pipeline import make_pipeline
+
+mod_full = mod_full.drop(indices, axis = 0)
+X_mod = mod_full.drop('Churn', axis = 1)
+y_mod = mod_full['Churn']
+X_mod.shape, y_mod.shape
+
+
+#Running logistic regression
+
+X_train, X_test, y_train, y_test = train_test_split(X_mod.values, y_mod.values, 
+                                                    train_size=0.8)
+
+scaler = StandardScaler()
+
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+
+solvers = ['newton-cg', 'lbfgs', 'liblinear', 'sag', 'saga']
+
+# Creating a model
+clf = LogisticRegression(max_iter = 10000000, solver = 'saga')
+
+# creating grid with parameters
+param_grid = {
+    'C': [100, 10, 1, 1.2, 1.1, 1.3, 1.4, 1.7,  0.1, 0.001, 0.01, 0.005, 0.009, 0.0086], 'penalty' : ['l1', 'l2']
+
+}
+
+# creating GridSearchCV
+search = GridSearchCV(clf, param_grid, refit = True, cv = 5, scoring= 'roc_auc')
+
+# searching for best parameters
+search.fit(X_train_scaled, y_train)
+
+# printing best parameters
+print(search.best_params_)
+
+
+#running logistic regression
+
+logr = LogisticRegression(C = 0.1, penalty = 'l1', solver = 'saga')
+logr.fit(X_train_scaled, y_train)
+pred = logr.predict_proba(X_test_scaled)
+
+from sklearn.metrics import roc_auc_score, roc_curve
+y_train_predicted = logr.predict_proba(X_train_scaled)[:, 1]
+y_test_predicted = logr.predict_proba(X_test_scaled)[:, 1]
+train_auc = roc_auc_score(y_train, y_train_predicted)
+test_auc = roc_auc_score(y_test, y_test_predicted)
+print(train_auc, test_auc)
+
+
+#GRADIENT BOOSTING
+
+
+!pip install catboost
+import catboost
+
+X_train_cat, X_test_cat, y_train_cat, y_test_cat = train_test_split(X_mod.values, y_mod.values, 
+                                                    train_size=0.8)
+
+boosting_model = catboost.CatBoostClassifier(verbose = False)
+
+
+#catboost with standard parameters
+boosting_model.fit(X_train_cat, y_train_cat)
+
+y_train_predicted = boosting_model.predict_proba(X_train_cat)[:, 1]
+y_test_predicted = boosting_model.predict_proba(X_test_cat)[:, 1]
+train_auc = roc_auc_score(y_train_cat, y_train_predicted)
+test_auc = roc_auc_score(y_test_cat, y_test_predicted)
+
+plt.figure(figsize=(10,7))
+plt.plot(*roc_curve(y_train_cat, y_train_predicted)[:2], label='train AUC={:.4f}'.format(train_auc))
+plt.plot(*roc_curve(y_test_cat, y_test_predicted)[:2], label='test AUC={:.4f}'.format(test_auc))
+legend_box = plt.legend(fontsize='large', framealpha=1).get_frame()
+legend_box.set_facecolor("white")
+legend_box.set_edgecolor("black")
+plt.plot(np.linspace(0,1,100), np.linspace(0,1,100))
+plt.show()
+
+#searching for best parameters
+X_train_origin, X_test_origin, y_train_origin, y_test_origin = train_test_split(X_mod.values, y_mod.values, 
+                                                    train_size=0.8)
+
+param_grid = {'n_estimators' : [50, 60, 65, 70, 75, 80, 85, 100, 120], 
+              'learning_rate' : [0.01, 0.05, 0.07, 0.08, 0.1, 0.11, 0.13, 0.005, 0.2, 0.4, 0.5],
+              'depth' : [1, 2, 3]
+              
+
+              
+             }
+
+model = catboost.CatBoostClassifier()
+grid_search_result = model.grid_search(param_grid, 
+                                       X= X_train_origin, 
+                                       y= y_train_origin, refit = True, cv = 5
+                                        )
+grid_search_result['params']
+
+
+#running xgboost
+
+import xgboost as xgb
+​
+X_train_new, X_test_new, y_train_new, y_test_new = train_test_split(X_mod.values, y_mod.values, 
+                                                    train_size=0.8,
+                                                    random_state=42)
+boosting_model = xgb.XGBClassifier(max_depth = 1, learning_rate = 0.4, n_estimators= 60)
+​
+boosting_model.fit(X_train_new, y_train_new)
+​
+y_train_predicted = boosting_model.predict_proba(X_train_new)[:, 1]
+y_test_predicted = boosting_model.predict_proba(X_test_new)[:, 1]
+train_auc = roc_auc_score(y_train_new, y_train_predicted)
+test_auc = roc_auc_score(y_test_new, y_test_predicted)
+​
+plt.figure(figsize=(10,7))
+plt.plot(*roc_curve(y_train_new, y_train_predicted)[:2], label='train AUC={:.4f}'.format(train_auc))
+plt.plot(*roc_curve(y_test_new, y_test_predicted)[:2], label='test AUC={:.4f}'.format(test_auc))
+legend_box = plt.legend(fontsize='large', framealpha=1).get_frame()
+legend_box.set_facecolor("white")
+legend_box.set_edgecolor("black")
+plt.plot(np.linspace(0,1,100), np.linspace(0,1,100))
+plt.show()
+
+
+
+#The best quality was achieved on catboost classifier with parameters {'depth': 1, 'iterations': 50, 'learning_rate': 0.5}
